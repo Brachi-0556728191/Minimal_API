@@ -6,7 +6,8 @@ using Microsoft.EntityFrameworkCore;
 using TodoApi;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
-using System.Text.Json; // נדרש להמרות JSON
+using System.Text.Json;
+using Microsoft.Extensions.Options; // נדרש להמרות JSON
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -15,7 +16,7 @@ var builder = WebApplication.CreateBuilder(args);
 // ==============================================================================
 var connectionString = builder.Configuration.GetConnectionString("todoapidb");
 builder.Services.AddDbContext<ToDoDbContext>(options =>
-    options.UseMySql(connectionString, ServerVersion.AutoDetect(connectionString)));
+    options.UseMySql(connectionString, new MySqlServerVersion(new Version(8, 0, 25))));
 
 // ==============================================================================
 // 2. הגדרת Swagger + מנעול 
@@ -215,5 +216,6 @@ app.MapDelete("/items/{id}", async (ToDoDbContext db, int id) =>
     }
     return Results.NotFound();
 }).RequireAuthorization();
+
 
 app.Run();
