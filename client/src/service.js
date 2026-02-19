@@ -2,8 +2,7 @@ import axios from 'axios';
 import { jwtDecode } from "jwt-decode";
 
 //הגדרת כתובת API כברירית מחדל
-axios.defaults.baseURL = "http://localhost:5168";
-
+axios.defaults.baseURL = process.env.REACT_APP_API_URL;
 
 // הוספת Interceptor כדי לטפל בשגיאות API באופן מרכזי
 axios.interceptors.response.use(
