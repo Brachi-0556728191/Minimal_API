@@ -160,7 +160,7 @@ app.MapPost("/register", async (ToDoDbContext db, User user) =>
 {
     // 1. בדיקה אם המשתמש כבר קיים
     var existingUser = await db.Users.FirstOrDefaultAsync(u => u.Username == user.Username);
-    if(existingUser != null) return Results.BadRequest("User already exists");
+    if (existingUser != null) return Results.BadRequest("User already exists");
 
     // 2. שמירת המשתמש החדש ב-DB
     db.Users.Add(user);
@@ -174,48 +174,101 @@ app.MapPost("/register", async (ToDoDbContext db, User user) =>
 });
 
 
+// // ==============================================================================
+// // 7. נתיבי המשימות (Items) - מוגנים ע"י RequireAuthorization
+// // ==============================================================================
+
+// app.MapGet("/", () => "API is running!");
+
+// app.MapGet("/items", async (ToDoDbContext db) =>
+//     await db.Items.ToListAsync()).RequireAuthorization(); // המנעול!
+
+// app.MapPost("/items", async (ToDoDbContext db, Item item) =>
+// {
+//     db.Items.Add(item);
+//     await db.SaveChangesAsync();
+//     return Results.Created($"/items/{item.Id}", item);
+// }).RequireAuthorization(); // המנעול!
+
+// app.MapPut("/items/{id}", async (ToDoDbContext db, int id, Item inputItem) =>
+// {
+//     var item = await db.Items.FindAsync(id);
+//     if (item is null) return Results.NotFound();
+
+
+//     if (inputItem.Name != null)
+//         item.Name = inputItem.Name;
+
+//     if (inputItem.IsComplete != null)
+//         item.IsComplete = inputItem.IsComplete;
+
+//     await db.SaveChangesAsync();
+//     return Results.NoContent();
+// }).RequireAuthorization();
+
+// app.MapDelete("/items/{id}", async (ToDoDbContext db, int id) =>
+// {
+//     if (await db.Items.FindAsync(id) is Item item)
+//     {
+//         db.Items.Remove(item);
+//         await db.SaveChangesAsync();
+//         return Results.Ok(item);
+//     }
+//     return Results.NotFound();
+// }).RequireAuthorization();
+
+
+
 // ==============================================================================
-// 7. נתיבי המשימות (Items) - מוגנים ע"י RequireAuthorization
+// 7. נתיבי המשימות (Items) - מוגנים ומסוננים לפי משתמש
 // ==============================================================================
 
-app.MapGet("/", () => "API is running!");
-
-app.MapGet("/items", async (ToDoDbContext db) =>
-    await db.Items.ToListAsync()).RequireAuthorization(); // המנעול!
-
-app.MapPost("/items", async (ToDoDbContext db, Item item) =>
+// פונקציית עזר פשוטה - נגדיר אותה כמשתנה (Lambda) כדי למנוע בעיות הקשר
+var getUserId = (ClaimsPrincipal user) =>
 {
+    var idClaim = user.FindFirst("id")?.Value;
+    return int.TryParse(idClaim, out int id) ? id : 0;
+};
+
+app.MapGet("/items", async (ToDoDbContext db, ClaimsPrincipal user) =>
+{
+    var userId = getUserId(user);
+    var tasks = await db.Items.Where(i => i.UserId == userId).ToListAsync();
+    return Results.Ok(tasks);
+}).RequireAuthorization();
+
+app.MapPost("/items", async (ToDoDbContext db, Item item, ClaimsPrincipal user) =>
+{
+    item.UserId = getUserId(user);
     db.Items.Add(item);
     await db.SaveChangesAsync();
     return Results.Created($"/items/{item.Id}", item);
-}).RequireAuthorization(); // המנעול!
+}).RequireAuthorization();
 
-app.MapPut("/items/{id}", async (ToDoDbContext db, int id, Item inputItem) =>
+app.MapPut("/items/{id}", async (ToDoDbContext db, int id, Item inputItem, ClaimsPrincipal user) =>
 {
-    var item = await db.Items.FindAsync(id);
-    if (item is null) return Results.NotFound();
+    var userId = getUserId(user);
+    var item = await db.Items.FirstOrDefaultAsync(i => i.Id == id && i.UserId == userId);
 
-    
-    if (inputItem.Name != null)
-        item.Name = inputItem.Name;
-    
-    if (inputItem.IsComplete != null)
-        item.IsComplete = inputItem.IsComplete;
+    if (item is null) return Results.NotFound("Task not found or unauthorized");
+
+    item.Name = inputItem.Name ?? item.Name;
+    item.IsComplete = inputItem.IsComplete ?? item.IsComplete;
 
     await db.SaveChangesAsync();
     return Results.NoContent();
 }).RequireAuthorization();
 
-app.MapDelete("/items/{id}", async (ToDoDbContext db, int id) =>
+app.MapDelete("/items/{id}", async (ToDoDbContext db, int id, ClaimsPrincipal user) =>
 {
-    if (await db.Items.FindAsync(id) is Item item)
-    {
-        db.Items.Remove(item);
-        await db.SaveChangesAsync();
-        return Results.Ok(item);
-    }
-    return Results.NotFound();
-}).RequireAuthorization();
+    var userId = getUserId(user);
+    var item = await db.Items.FirstOrDefaultAsync(i => i.Id == id && i.UserId == userId);
 
+    if (item is null) return Results.NotFound("Task not found or unauthorized");
+
+    db.Items.Remove(item);
+    await db.SaveChangesAsync();
+    return Results.Ok(new { Message = "Deleted successfully", Item = item });
+}).RequireAuthorization();
 
 app.Run();
